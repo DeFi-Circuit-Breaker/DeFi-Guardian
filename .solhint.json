@@ -7,6 +7,10 @@
     "ordering": "warn",
     "no-inline-assembly": "off",
     "not-rely-on-time": "off",
-    "avoid-tx-origin": "off"
+    "avoid-tx-origin": "off",
+    "func-name-mixedcase": "off",
+    "var-name-mixedcase": "off",
+    "private-vars-leading-underscore": "off",
+    "func-param-name-mixedcase": "off"
   }
 }

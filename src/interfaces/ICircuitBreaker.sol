@@ -10,26 +10,9 @@ interface ICircuitBreaker {
      *
      */
 
-    function registerToken(
-        address _token,
-        uint256 _metricThreshold,
-        uint256 _minAmountToLimit
-    ) external;
-
-    function updateTokenParams(
-        address _token,
-        uint256 _metricThreshold,
-        uint256 _minAmountToLimit
-    ) external;
-
     function onTokenInflow(address _token, uint256 _amount) external;
 
-    function onTokenOutflow(
-        address _token,
-        uint256 _amount,
-        address _recipient,
-        bool _revertOnRateLimit
-    ) external;
+    function onTokenOutflow(address _token, uint256 _amount, address _recipient, bool _revertOnRateLimit) external;
 
     function onTokenInflowNative(uint256 _amount) external;
 
@@ -37,17 +20,25 @@ interface ICircuitBreaker {
 
     function claimLockedFunds(address _token, address _recipient) external;
 
-    function setAdmin(address _admin) external;
+    function overrideExpiredRateLimit() external;
+
+    function registerToken(address _token, uint256 _metricThreshold, uint256 _minAmountToLimit) external;
+
+    function updateTokenParams(address _token, uint256 _metricThreshold, uint256 _minAmountToLimit) external;
 
     function overrideRateLimit() external;
-
-    function overrideExpiredRateLimit() external;
 
     function addProtectedContracts(address[] calldata _ProtectedContracts) external;
 
     function removeProtectedContracts(address[] calldata _ProtectedContracts) external;
 
     function startGracePeriod(uint256 _gracePeriodEndTimestamp) external;
+
+    function releaseLockedFunds(address _token, address[] calldata _recipients) external;
+
+    function withdrawHackerFunds(address _token, address _hacker, address _recipient) external;
+
+    function setAdmin(address _admin) external;
 
     /**
      *

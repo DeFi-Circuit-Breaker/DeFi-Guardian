@@ -20,12 +20,7 @@ contract ProtectedContract {
 
     // Internal function to be used when tokens are deposited
     // Transfers the tokens from sender to recipient and then calls the circuitBreaker's onTokenInflow
-    function cbInflowSafeTransferFrom(
-        address _token,
-        address _sender,
-        address _recipient,
-        uint256 _amount
-    ) internal {
+    function cbInflowSafeTransferFrom(address _token, address _sender, address _recipient, uint256 _amount) internal {
         // Transfer the tokens safely from sender to recipient
         IERC20(_token).safeTransferFrom(_sender, _recipient, _amount);
         // Call the circuitBreaker's onTokenInflow
@@ -34,12 +29,9 @@ contract ProtectedContract {
 
     // Internal function to be used when tokens are withdrawn
     // Transfers the tokens to the circuitBreaker and then calls the circuitBreaker's onTokenOutflow
-    function cbOutflowSafeTransfer(
-        address _token,
-        address _recipient,
-        uint256 _amount,
-        bool _revertOnRateLimit
-    ) internal {
+    function cbOutflowSafeTransfer(address _token, address _recipient, uint256 _amount, bool _revertOnRateLimit)
+        internal
+    {
         // Transfer the tokens safely to the circuitBreaker
         IERC20(_token).safeTransfer(address(circuitBreaker), _amount);
         // Call the circuitBreaker's onTokenOutflow
@@ -51,11 +43,7 @@ contract ProtectedContract {
         circuitBreaker.onTokenInflowNative(msg.value);
     }
 
-    function cbOutflowNative(
-        address _recipient,
-        uint256 _amount,
-        bool _revertOnRateLimit
-    ) internal {
+    function cbOutflowNative(address _recipient, uint256 _amount, bool _revertOnRateLimit) internal {
         // Transfer the native tokens safely through the circuitBreaker
         circuitBreaker.onTokenOutflowNative{value: _amount}(_recipient, _revertOnRateLimit);
     }
