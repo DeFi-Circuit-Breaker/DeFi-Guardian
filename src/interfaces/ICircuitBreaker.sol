@@ -12,7 +12,12 @@ interface ICircuitBreaker {
 
     function onTokenInflow(address _token, uint256 _amount) external;
 
-    function onTokenOutflow(address _token, uint256 _amount, address _recipient, bool _revertOnRateLimit) external;
+    function onTokenOutflow(
+        address _token,
+        uint256 _amount,
+        address _recipient,
+        bool _revertOnRateLimit
+    ) external;
 
     function onTokenInflowNative(uint256 _amount) external;
 
@@ -22,9 +27,17 @@ interface ICircuitBreaker {
 
     function overrideExpiredRateLimit() external;
 
-    function registerToken(address _token, uint256 _metricThreshold, uint256 _minAmountToLimit) external;
+    function registerToken(
+        address _token,
+        uint256 _metricThreshold,
+        uint256 _minAmountToLimit
+    ) external;
 
-    function updateTokenParams(address _token, uint256 _metricThreshold, uint256 _minAmountToLimit) external;
+    function updateTokenParams(
+        address _token,
+        uint256 _metricThreshold,
+        uint256 _minAmountToLimit
+    ) external;
 
     function overrideRateLimit() external;
 
@@ -34,11 +47,14 @@ interface ICircuitBreaker {
 
     function startGracePeriod(uint256 _gracePeriodEndTimestamp) external;
 
-    function releaseLockedFunds(address _token, address[] calldata _recipients) external;
-
-    function withdrawHackerFunds(address _token, address _hacker, address _recipient) external;
-
     function setAdmin(address _admin) external;
+
+    function markAsExploited() external;
+
+    function migrateFundsAfterExploit(
+        address[] calldata _tokens,
+        address _recipientMultiSig
+    ) external;
 
     /**
      *

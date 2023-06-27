@@ -41,6 +41,8 @@ contract CircuitBreaker is ICircuitBreaker {
 
     uint256 public immutable TICK_LENGTH;
 
+    bool public isExploited = false;
+
     ////////////////////////////////////////////////////////////////
     //                           EVENTS                           //
     ////////////////////////////////////////////////////////////////
@@ -56,7 +58,12 @@ contract CircuitBreaker is ICircuitBreaker {
     event TokenBacklogCleaned(address indexed token, uint256 timestamp);
     event AdminSet(address indexed newAdmin);
     event FundsReleased(address indexed token);
-    event HackerFundsWithdrawn(address indexed hacker, address indexed token, address indexed receiver, uint256 amount);
+    event HackerFundsWithdrawn(
+        address indexed hacker,
+        address indexed token,
+        address indexed receiver,
+        uint256 amount
+    );
     event GracePeriodStarted(uint256 gracePeriodEnd);
 
     ////////////////////////////////////////////////////////////////
@@ -74,6 +81,8 @@ contract CircuitBreaker is ICircuitBreaker {
     error NativeTransferFailed();
     error InvalidRecipientAddress();
     error InvalidGracePeriodEnd();
+    error ProtocolWasExploited();
+    error NotExploited();
 
     ////////////////////////////////////////////////////////////////
     //                         MODIFIERS                          //
@@ -86,6 +95,18 @@ contract CircuitBreaker is ICircuitBreaker {
 
     modifier onlyAdmin() {
         if (msg.sender != admin) revert NotAdmin();
+        _;
+    }
+
+    /**
+     * @notice When the isExploited flag is set to true, the protocol is considered exploited and will
+     * revert all future deposits, withdrawals, and claims to locked funds.
+     * The admin should migrate the funds from the underlying protocol and what is remaining
+     * in the CircuitBreaker contract to a multisig. This multisig should then be used to refund users pro-rata.
+     * (Social Consensus)
+     */
+    modifier notExploited() {
+        if (isExploited) revert ProtocolWasExploited();
         _;
     }
 
@@ -116,24 +137,176 @@ contract CircuitBreaker is ICircuitBreaker {
     /**
      * @dev Give protected contracts one function to call for convenience
      */
-    function onTokenInflow(address _token, uint256 _amount) external onlyProtected {
+    function onTokenInflow(address _token, uint256 _amount) external onlyProtected notExploited {
         _onTokenInflow(_token, _amount);
     }
 
-    function _onTokenInflow(address _token, uint256 _amount) internal {
-        /// @dev uint256 could overflow into negative
-        tokenLimiters[_token].recordChange(int256(_amount), WITHDRAWAL_PERIOD, TICK_LENGTH);
-        emit TokenInflow(_token, _amount);
-    }
-
-    function onTokenOutflow(address _token, uint256 _amount, address _recipient, bool _revertOnRateLimit)
-        external
-        onlyProtected
-    {
+    function onTokenOutflow(
+        address _token,
+        uint256 _amount,
+        address _recipient,
+        bool _revertOnRateLimit
+    ) external onlyProtected notExploited {
         _onTokenOutflow(_token, _amount, _recipient, _revertOnRateLimit);
     }
 
-    function _onTokenOutflow(address _token, uint256 _amount, address _recipient, bool _revertOnRateLimit) internal {
+    function onTokenInflowNative(uint256 _amount) external onlyProtected notExploited {
+        _onTokenInflow(NATIVE_ADDRESS_PROXY, _amount);
+    }
+
+    function onTokenOutflowNative(
+        address _recipient,
+        bool _revertOnRateLimit
+    ) external payable onlyProtected notExploited {
+        _onTokenOutflow(NATIVE_ADDRESS_PROXY, msg.value, _recipient, _revertOnRateLimit);
+    }
+
+    /**
+     * @notice Allow users to claim locked funds when rate limit is resolved
+     * use address(1) for native token claims
+     */
+
+    function claimLockedFunds(address _token, address _recipient) external notExploited {
+        if (lockedFunds[_recipient][_token] == 0) revert NoLockedFunds();
+        if (isRateLimited) revert RateLimited();
+
+        uint256 amount = lockedFunds[_recipient][_token];
+        lockedFunds[_recipient][_token] = 0;
+
+        emit LockedFundsClaimed(_token, _recipient);
+
+        _safeTransferIncludingNative(_token, _recipient, amount);
+    }
+
+    /**
+     * @dev Due to potential inactivity, the linked list may grow to where
+     * it is better to clear the backlog in advance to save gas for the users
+     * this is a public function so that anyone can call it as it is not user sensitive
+     */
+    function clearBackLog(address _token, uint256 _maxIterations) external {
+        tokenLimiters[_token].sync(WITHDRAWAL_PERIOD, _maxIterations);
+        emit TokenBacklogCleaned(_token, block.timestamp);
+    }
+
+    function overrideExpiredRateLimit() external {
+        if (!isRateLimited) revert NotRateLimited();
+        if (block.timestamp - lastRateLimitTimestamp < rateLimitCooldownPeriod) {
+            revert CooldownPeriodNotReached();
+        }
+
+        isRateLimited = false;
+    }
+
+    function registerToken(
+        address _token,
+        uint256 _minLiqRetainedBps,
+        uint256 _limitBeginThreshold
+    ) external onlyAdmin {
+        tokenLimiters[_token].init(_minLiqRetainedBps, _limitBeginThreshold);
+        emit TokenRegistered(_token, _minLiqRetainedBps, _limitBeginThreshold);
+    }
+
+    function updateTokenParams(
+        address _token,
+        uint256 _minLiqRetainedBps,
+        uint256 _limitBeginThreshold
+    ) external onlyAdmin {
+        Limiter storage limiter = tokenLimiters[_token];
+        limiter.updateParams(_minLiqRetainedBps, _limitBeginThreshold);
+        limiter.sync(WITHDRAWAL_PERIOD);
+    }
+
+    function overrideRateLimit() external onlyAdmin {
+        if (!isRateLimited) revert NotRateLimited();
+        isRateLimited = false;
+        // Allow the grace period to extend for the full withdrawal period to not trigger rate limit again
+        // if the rate limit is removed just before the withdrawal period ends
+        gracePeriodEndTimestamp = lastRateLimitTimestamp + WITHDRAWAL_PERIOD;
+    }
+
+    function addProtectedContracts(address[] calldata _ProtectedContracts) external onlyAdmin {
+        for (uint256 i = 0; i < _ProtectedContracts.length; i++) {
+            isProtectedContract[_ProtectedContracts[i]] = true;
+        }
+    }
+
+    function removeProtectedContracts(address[] calldata _ProtectedContracts) external onlyAdmin {
+        for (uint256 i = 0; i < _ProtectedContracts.length; i++) {
+            isProtectedContract[_ProtectedContracts[i]] = false;
+        }
+    }
+
+    function startGracePeriod(uint256 _gracePeriodEndTimestamp) external onlyAdmin {
+        if (_gracePeriodEndTimestamp <= block.timestamp) revert InvalidGracePeriodEnd();
+        gracePeriodEndTimestamp = _gracePeriodEndTimestamp;
+        emit GracePeriodStarted(_gracePeriodEndTimestamp);
+    }
+
+    function setAdmin(address _newAdmin) external onlyAdmin {
+        if (_newAdmin == address(0)) revert InvalidAdminAddress();
+        admin = _newAdmin;
+        emit AdminSet(_newAdmin);
+    }
+
+    function tokenLiquidityChanges(
+        address _token,
+        uint256 _tickTimestamp
+    ) external view returns (uint256 nextTimestamp, int256 amount) {
+        LiqChangeNode storage node = tokenLimiters[_token].listNodes[_tickTimestamp];
+        nextTimestamp = node.nextTimestamp;
+        amount = node.amount;
+    }
+
+    function isRateLimitBreeched(address _token) public view returns (bool) {
+        return tokenLimiters[_token].status() == LimitStatus.Breeched;
+    }
+
+    function isInGracePeriod() public view returns (bool) {
+        return block.timestamp <= gracePeriodEndTimestamp;
+    }
+
+    function markAsExploited() external onlyAdmin {
+        isExploited = true;
+    }
+
+    function migrateFundsAfterExploit(
+        address[] calldata _tokens,
+        address _recipientMultiSig
+    ) external onlyAdmin {
+        if (!isExploited) revert NotExploited();
+        for (uint256 i = 0; i < _tokens.length; i++) {
+            if (_tokens[i] == NATIVE_ADDRESS_PROXY) {
+                uint256 amount = address(this).balance;
+                if (amount > 0) {
+                    _safeTransferIncludingNative(_tokens[i], _recipientMultiSig, amount);
+                }
+            } else {
+                uint256 amount = IERC20(_tokens[i]).balanceOf(address(this));
+                if (amount > 0) {
+                    _safeTransferIncludingNative(_tokens[i], _recipientMultiSig, amount);
+                }
+            }
+        }
+    }
+
+    ////////////////////////////////////////////////////////////////
+    //                       INTERNAL  FUNCTIONS                  //
+    ////////////////////////////////////////////////////////////////
+
+    function _onTokenInflow(address _token, uint256 _amount) internal {
+        /// @dev uint256 could overflow into negative
+        Limiter storage limiter = tokenLimiters[_token];
+
+        limiter.recordChange(int256(_amount), WITHDRAWAL_PERIOD, TICK_LENGTH);
+        emit TokenInflow(_token, _amount);
+    }
+
+    function _onTokenOutflow(
+        address _token,
+        uint256 _amount,
+        address _recipient,
+        bool _revertOnRateLimit
+    ) internal {
         Limiter storage limiter = tokenLimiters[_token];
         // Check if the token has enforced rate limited
         if (!limiter.initialized()) {
@@ -174,153 +347,16 @@ contract CircuitBreaker is ICircuitBreaker {
         emit TokenWithdraw(_token, _recipient, _amount);
     }
 
-    function _safeTransferIncludingNative(address _token, address _recipient, uint256 _amount) internal {
+    function _safeTransferIncludingNative(
+        address _token,
+        address _recipient,
+        uint256 _amount
+    ) internal {
         if (_token == NATIVE_ADDRESS_PROXY) {
-            (bool success,) = _recipient.call{value: _amount}("");
+            (bool success, ) = _recipient.call{value: _amount}("");
             if (!success) revert NativeTransferFailed();
         } else {
             IERC20(_token).safeTransfer(_recipient, _amount);
         }
-    }
-
-    function onTokenInflowNative(uint256 _amount) external onlyProtected {
-        _onTokenInflow(NATIVE_ADDRESS_PROXY, _amount);
-    }
-
-    function onTokenOutflowNative(address _recipient, bool _revertOnRateLimit) external payable onlyProtected {
-        _onTokenOutflow(NATIVE_ADDRESS_PROXY, msg.value, _recipient, _revertOnRateLimit);
-    }
-
-    /**
-     * @notice Allow users to claim locked funds when rate limit is resolved
-     * use address(1) for native token claims
-     */
-
-    function claimLockedFunds(address _token, address _recipient) external {
-        if (lockedFunds[_recipient][_token] == 0) revert NoLockedFunds();
-        if (isRateLimited) revert RateLimited();
-
-        uint256 amount = lockedFunds[_recipient][_token];
-        lockedFunds[_recipient][_token] = 0;
-
-        emit LockedFundsClaimed(_token, _recipient);
-
-        _safeTransferIncludingNative(_token, _recipient, amount);
-    }
-
-    /**
-     * @dev Due to potential inactivity, the linked list may grow to where
-     * it is better to clear the backlog in advance to save gas for the users
-     * this is a public function so that anyone can call it as it is not user sensitive
-     */
-    function clearBackLog(address _token, uint256 _maxIterations) external {
-        tokenLimiters[_token].sync(WITHDRAWAL_PERIOD, _maxIterations);
-        emit TokenBacklogCleaned(_token, block.timestamp);
-    }
-
-    function overrideExpiredRateLimit() external {
-        if (!isRateLimited) revert NotRateLimited();
-        if (block.timestamp - lastRateLimitTimestamp < rateLimitCooldownPeriod) {
-            revert CooldownPeriodNotReached();
-        }
-
-        isRateLimited = false;
-    }
-
-    function registerToken(address _token, uint256 _minLiqRetainedBps, uint256 _limitBeginThreshold)
-        external
-        onlyAdmin
-    {
-        tokenLimiters[_token].init(_minLiqRetainedBps, _limitBeginThreshold);
-        emit TokenRegistered(_token, _minLiqRetainedBps, _limitBeginThreshold);
-    }
-
-    function updateTokenParams(address _token, uint256 _minLiqRetainedBps, uint256 _limitBeginThreshold)
-        external
-        onlyAdmin
-    {
-        Limiter storage limiter = tokenLimiters[_token];
-        limiter.updateParams(_minLiqRetainedBps, _limitBeginThreshold);
-        limiter.sync(WITHDRAWAL_PERIOD);
-    }
-
-    function overrideRateLimit() external onlyAdmin {
-        if (!isRateLimited) revert NotRateLimited();
-        isRateLimited = false;
-        // Allow the grace period to extend for the full withdrawal period to not trigger rate limit again
-        // if the rate limit is removed just before the withdrawal period ends
-        gracePeriodEndTimestamp = lastRateLimitTimestamp + WITHDRAWAL_PERIOD;
-    }
-
-    function addProtectedContracts(address[] calldata _ProtectedContracts) external onlyAdmin {
-        for (uint256 i = 0; i < _ProtectedContracts.length; i++) {
-            isProtectedContract[_ProtectedContracts[i]] = true;
-        }
-    }
-
-    function removeProtectedContracts(address[] calldata _ProtectedContracts) external onlyAdmin {
-        for (uint256 i = 0; i < _ProtectedContracts.length; i++) {
-            isProtectedContract[_ProtectedContracts[i]] = false;
-        }
-    }
-
-    function startGracePeriod(uint256 _gracePeriodEndTimestamp) external onlyAdmin {
-        if (_gracePeriodEndTimestamp <= block.timestamp) revert InvalidGracePeriodEnd();
-        gracePeriodEndTimestamp = _gracePeriodEndTimestamp;
-        emit GracePeriodStarted(_gracePeriodEndTimestamp);
-    }
-
-    function releaseLockedFunds(address _token, address[] calldata _recipients) external onlyAdmin {
-        if (!isRateLimited) revert NotRateLimited();
-        if (!isRateLimitBreeched(_token)) revert TokenNotRateLimited();
-
-        for (uint256 i = 0; i < _recipients.length; i++) {
-            address _recipient = _recipients[i];
-            if (lockedFunds[_recipient][_token] == 0) revert NoLockedFunds();
-
-            _safeTransferIncludingNative(_token, _recipient, lockedFunds[_recipient][_token]);
-
-            lockedFunds[_recipient][_token] = 0;
-        }
-
-        emit FundsReleased(_token);
-    }
-
-    function withdrawHackerFunds(address _token, address _hacker, address _recipient) external onlyAdmin {
-        if (_recipient == address(0)) revert InvalidRecipientAddress();
-        if (!isRateLimited) revert NotRateLimited();
-        if (!isRateLimitBreeched(_token)) revert TokenNotRateLimited();
-
-        if (lockedFunds[_hacker][_token] == 0) revert NoLockedFunds();
-
-        uint256 hackedAmount = lockedFunds[_hacker][_token];
-        _safeTransferIncludingNative(_token, _recipient, hackedAmount);
-        lockedFunds[_hacker][_token] = 0;
-
-        emit HackerFundsWithdrawn(_hacker, _token, _recipient, hackedAmount);
-    }
-
-    function setAdmin(address _newAdmin) external onlyAdmin {
-        if (_newAdmin == address(0)) revert InvalidAdminAddress();
-        admin = _newAdmin;
-        emit AdminSet(_newAdmin);
-    }
-
-    function tokenLiquidityChanges(address _token, uint256 _tickTimestamp)
-        external
-        view
-        returns (uint256 nextTimestamp, int256 amount)
-    {
-        LiqChangeNode storage node = tokenLimiters[_token].listNodes[_tickTimestamp];
-        nextTimestamp = node.nextTimestamp;
-        amount = node.amount;
-    }
-
-    function isRateLimitBreeched(address _token) public view returns (bool) {
-        return tokenLimiters[_token].status() == LimitStatus.Breeched;
-    }
-
-    function isInGracePeriod() public view returns (bool) {
-        return block.timestamp <= gracePeriodEndTimestamp;
     }
 }
