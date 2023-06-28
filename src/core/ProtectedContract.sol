@@ -40,11 +40,11 @@ contract ProtectedContract {
 
     function cbInflowNative() internal {
         // Transfer the tokens safely from sender to recipient
-        circuitBreaker.onTokenInflowNative(msg.value);
+        circuitBreaker.onNativeAssetInflow(msg.value);
     }
 
     function cbOutflowNative(address _recipient, uint256 _amount, bool _revertOnRateLimit) internal {
         // Transfer the native tokens safely through the circuitBreaker
-        circuitBreaker.onTokenOutflowNative{value: _amount}(_recipient, _revertOnRateLimit);
+        circuitBreaker.onNativeAssetOutflow{value: _amount}(_recipient, _revertOnRateLimit);
     }
 }

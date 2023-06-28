@@ -20,7 +20,7 @@ contract CircuitBreaker is ICircuitBreaker {
     /**
      * @notice Funds locked if rate limited reached
      */
-    mapping(address recipient => mapping(address token => uint256 amount)) public lockedFunds;
+    mapping(address recipient => mapping(address asset => uint256 amount)) public lockedFunds;
 
     mapping(address account => bool protectionActive) public isProtectedContract;
 
@@ -41,30 +41,17 @@ contract CircuitBreaker is ICircuitBreaker {
 
     uint256 public immutable TICK_LENGTH;
 
-    bool public isExploited = false;
+    bool public operational = true;
 
     ////////////////////////////////////////////////////////////////
     //                           EVENTS                           //
     ////////////////////////////////////////////////////////////////
 
     /**
-     * @notice Emitted when a token is registered
+     * @notice Non-EIP standard events
      */
-    event TokenRegistered(address indexed token, uint256 minKeepBps, uint256 limitBeginThreshold);
-    event TokenInflow(address indexed token, uint256 indexed amount);
-    event TokenRateLimitBreached(address indexed token, uint256 timestamp);
-    event TokenWithdraw(address indexed token, address indexed recipient, uint256 amount);
-    event LockedFundsClaimed(address indexed token, address indexed recipient);
+
     event TokenBacklogCleaned(address indexed token, uint256 timestamp);
-    event AdminSet(address indexed newAdmin);
-    event FundsReleased(address indexed token);
-    event HackerFundsWithdrawn(
-        address indexed hacker,
-        address indexed token,
-        address indexed receiver,
-        uint256 amount
-    );
-    event GracePeriodStarted(uint256 gracePeriodEnd);
 
     ////////////////////////////////////////////////////////////////
     //                           ERRORS                           //
@@ -99,21 +86,21 @@ contract CircuitBreaker is ICircuitBreaker {
     }
 
     /**
-     * @notice When the isExploited flag is set to true, the protocol is considered exploited and will
+     * @notice When the isOperational flag is set to false, the protocol is considered locked and will
      * revert all future deposits, withdrawals, and claims to locked funds.
      * The admin should migrate the funds from the underlying protocol and what is remaining
      * in the CircuitBreaker contract to a multisig. This multisig should then be used to refund users pro-rata.
      * (Social Consensus)
      */
-    modifier notExploited() {
-        if (isExploited) revert ProtocolWasExploited();
+    modifier isOperational() {
+        if (!operational) revert ProtocolWasExploited();
         _;
     }
 
     /**
-     * @notice gracePeriod refers to the time after a rate limit breech and then overriden where withdrawals are
+     * @notice gracePeriod refers to the time after a rate limit trigger and then overriden where withdrawals are
      * still allowed.
-     * @dev For example a false positive rate limit breech, then it is overriden, so withdrawals are still
+     * @dev For example a false positive rate limit trigger, then it is overriden, so withdrawals are still
      * allowed for a period of time.
      * Before the rate limit is enforced again, it should be set to be at least your largest
      * withdrawalPeriod length
@@ -137,7 +124,7 @@ contract CircuitBreaker is ICircuitBreaker {
     /**
      * @dev Give protected contracts one function to call for convenience
      */
-    function onTokenInflow(address _token, uint256 _amount) external onlyProtected notExploited {
+    function onTokenInflow(address _token, uint256 _amount) external onlyProtected isOperational {
         _onTokenInflow(_token, _amount);
     }
 
@@ -146,18 +133,18 @@ contract CircuitBreaker is ICircuitBreaker {
         uint256 _amount,
         address _recipient,
         bool _revertOnRateLimit
-    ) external onlyProtected notExploited {
+    ) external onlyProtected isOperational {
         _onTokenOutflow(_token, _amount, _recipient, _revertOnRateLimit);
     }
 
-    function onTokenInflowNative(uint256 _amount) external onlyProtected notExploited {
+    function onNativeAssetInflow(uint256 _amount) external onlyProtected isOperational {
         _onTokenInflow(NATIVE_ADDRESS_PROXY, _amount);
     }
 
-    function onTokenOutflowNative(
+    function onNativeAssetOutflow(
         address _recipient,
         bool _revertOnRateLimit
-    ) external payable onlyProtected notExploited {
+    ) external payable onlyProtected isOperational {
         _onTokenOutflow(NATIVE_ADDRESS_PROXY, msg.value, _recipient, _revertOnRateLimit);
     }
 
@@ -166,16 +153,16 @@ contract CircuitBreaker is ICircuitBreaker {
      * use address(1) for native token claims
      */
 
-    function claimLockedFunds(address _token, address _recipient) external notExploited {
-        if (lockedFunds[_recipient][_token] == 0) revert NoLockedFunds();
+    function claimLockedFunds(address _asset, address _recipient) external isOperational {
+        if (lockedFunds[_recipient][_asset] == 0) revert NoLockedFunds();
         if (isRateLimited) revert RateLimited();
 
-        uint256 amount = lockedFunds[_recipient][_token];
-        lockedFunds[_recipient][_token] = 0;
+        uint256 amount = lockedFunds[_recipient][_asset];
+        lockedFunds[_recipient][_asset] = 0;
 
-        emit LockedFundsClaimed(_token, _recipient);
+        emit LockedFundsClaimed(_asset, _recipient);
 
-        _safeTransferIncludingNative(_token, _recipient, amount);
+        _safeTransferIncludingNative(_asset, _recipient, amount);
     }
 
     /**
@@ -197,21 +184,21 @@ contract CircuitBreaker is ICircuitBreaker {
         isRateLimited = false;
     }
 
-    function registerToken(
-        address _token,
+    function registerAsset(
+        address _asset,
         uint256 _minLiqRetainedBps,
         uint256 _limitBeginThreshold
     ) external onlyAdmin {
-        tokenLimiters[_token].init(_minLiqRetainedBps, _limitBeginThreshold);
-        emit TokenRegistered(_token, _minLiqRetainedBps, _limitBeginThreshold);
+        tokenLimiters[_asset].init(_minLiqRetainedBps, _limitBeginThreshold);
+        emit AssetRegistered(_asset, _minLiqRetainedBps, _limitBeginThreshold);
     }
 
-    function updateTokenParams(
-        address _token,
+    function updateAssetParams(
+        address _asset,
         uint256 _minLiqRetainedBps,
         uint256 _limitBeginThreshold
     ) external onlyAdmin {
-        Limiter storage limiter = tokenLimiters[_token];
+        Limiter storage limiter = tokenLimiters[_asset];
         limiter.updateParams(_minLiqRetainedBps, _limitBeginThreshold);
         limiter.sync(WITHDRAWAL_PERIOD);
     }
@@ -257,33 +244,33 @@ contract CircuitBreaker is ICircuitBreaker {
         amount = node.amount;
     }
 
-    function isRateLimitBreeched(address _token) public view returns (bool) {
-        return tokenLimiters[_token].status() == LimitStatus.Breeched;
+    function isRateLimitTriggered(address _asset) public view returns (bool) {
+        return tokenLimiters[_asset].status() == LimitStatus.Triggered;
     }
 
     function isInGracePeriod() public view returns (bool) {
         return block.timestamp <= gracePeriodEndTimestamp;
     }
 
-    function markAsExploited() external onlyAdmin {
-        isExploited = true;
+    function markAsNotOperational() external onlyAdmin {
+        operational = false;
     }
 
     function migrateFundsAfterExploit(
-        address[] calldata _tokens,
-        address _recipientMultiSig
+        address[] calldata _assets,
+        address _recoveryRecipient
     ) external onlyAdmin {
-        if (!isExploited) revert NotExploited();
-        for (uint256 i = 0; i < _tokens.length; i++) {
-            if (_tokens[i] == NATIVE_ADDRESS_PROXY) {
+        if (operational) revert NotExploited();
+        for (uint256 i = 0; i < _assets.length; i++) {
+            if (_assets[i] == NATIVE_ADDRESS_PROXY) {
                 uint256 amount = address(this).balance;
                 if (amount > 0) {
-                    _safeTransferIncludingNative(_tokens[i], _recipientMultiSig, amount);
+                    _safeTransferIncludingNative(_assets[i], _recoveryRecipient, amount);
                 }
             } else {
-                uint256 amount = IERC20(_tokens[i]).balanceOf(address(this));
+                uint256 amount = IERC20(_assets[i]).balanceOf(address(this));
                 if (amount > 0) {
-                    _safeTransferIncludingNative(_tokens[i], _recipientMultiSig, amount);
+                    _safeTransferIncludingNative(_assets[i], _recoveryRecipient, amount);
                 }
             }
         }
@@ -298,7 +285,7 @@ contract CircuitBreaker is ICircuitBreaker {
         Limiter storage limiter = tokenLimiters[_token];
 
         limiter.recordChange(int256(_amount), WITHDRAWAL_PERIOD, TICK_LENGTH);
-        emit TokenInflow(_token, _amount);
+        emit AssetInflow(_token, _amount);
     }
 
     function _onTokenOutflow(
@@ -324,9 +311,9 @@ contract CircuitBreaker is ICircuitBreaker {
             return;
         }
 
-        // Check if rate limit is breeched after withdrawal and not in grace period
-        // (grace period allows for withdrawals to be made if rate limit is breeched but overriden)
-        if (limiter.status() == LimitStatus.Breeched && !isInGracePeriod()) {
+        // Check if rate limit is triggered after withdrawal and not in grace period
+        // (grace period allows for withdrawals to be made if rate limit is triggered but overriden)
+        if (limiter.status() == LimitStatus.Triggered && !isInGracePeriod()) {
             if (_revertOnRateLimit) {
                 revert RateLimited();
             }
@@ -336,7 +323,7 @@ contract CircuitBreaker is ICircuitBreaker {
             // add to locked funds claimable when resolved
             lockedFunds[_recipient][_token] += _amount;
 
-            emit TokenRateLimitBreached(_token, block.timestamp);
+            emit AssetRateLimitBreached(_token, block.timestamp);
 
             return;
         }
@@ -344,7 +331,7 @@ contract CircuitBreaker is ICircuitBreaker {
         // if everything is good, transfer the tokens
         _safeTransferIncludingNative(_token, _recipient, _amount);
 
-        emit TokenWithdraw(_token, _recipient, _amount);
+        emit AssetWithdraw(_token, _recipient, _amount);
     }
 
     function _safeTransferIncludingNative(

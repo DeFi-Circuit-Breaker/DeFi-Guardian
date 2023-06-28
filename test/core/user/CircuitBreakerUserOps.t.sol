@@ -33,9 +33,9 @@ contract CircuitBreakerUserOpsTest is Test {
 
         vm.prank(admin);
         // Protect USDC with 70% max drawdown per 4 hours
-        circuitBreaker.registerToken(address(token), 7000, 1000e18);
+        circuitBreaker.registerAsset(address(token), 7000, 1000e18);
         vm.prank(admin);
-        circuitBreaker.registerToken(NATIVE_ADDRESS_PROXY, 7000, 1000e18);
+        circuitBreaker.registerAsset(NATIVE_ADDRESS_PROXY, 7000, 1000e18);
         vm.warp(1 hours);
     }
 
@@ -49,11 +49,11 @@ contract CircuitBreakerUserOpsTest is Test {
         vm.prank(alice);
         deFi.deposit(address(unlimitedToken), 10000e18);
 
-        assertEq(circuitBreaker.isRateLimitBreeched(address(unlimitedToken)), false);
+        assertEq(circuitBreaker.isRateLimitTriggered(address(unlimitedToken)), false);
         vm.warp(1 hours);
         vm.prank(alice);
         deFi.withdrawal(address(unlimitedToken), 10000e18);
-        assertEq(circuitBreaker.isRateLimitBreeched(address(unlimitedToken)), false);
+        assertEq(circuitBreaker.isRateLimitTriggered(address(unlimitedToken)), false);
     }
 
     function test_deposit_shouldBeSuccessful() public {
@@ -65,7 +65,7 @@ contract CircuitBreakerUserOpsTest is Test {
         vm.prank(alice);
         deFi.deposit(address(token), 10e18);
 
-        assertEq(circuitBreaker.isRateLimitBreeched(address(token)), false);
+        assertEq(circuitBreaker.isRateLimitTriggered(address(token)), false);
 
         (, , int256 liqTotal, int256 liqInPeriod, uint256 head, uint256 tail) = circuitBreaker
             .tokenLimiters(address(token));
@@ -84,7 +84,7 @@ contract CircuitBreakerUserOpsTest is Test {
         vm.warp(1 hours);
         vm.prank(alice);
         deFi.deposit(address(token), 110e18);
-        assertEq(circuitBreaker.isRateLimitBreeched(address(token)), false);
+        assertEq(circuitBreaker.isRateLimitTriggered(address(token)), false);
         (, , liqTotal, liqInPeriod, , ) = circuitBreaker.tokenLimiters(address(token));
         assertEq(liqTotal, 0);
         assertEq(liqInPeriod, 120e18);
@@ -93,7 +93,7 @@ contract CircuitBreakerUserOpsTest is Test {
         vm.warp(10 hours);
         vm.prank(alice);
         deFi.deposit(address(token), 10e18);
-        assertEq(circuitBreaker.isRateLimitBreeched(address(token)), false);
+        assertEq(circuitBreaker.isRateLimitTriggered(address(token)), false);
         (, , liqTotal, liqInPeriod, head, tail) = circuitBreaker.tokenLimiters(address(token));
         assertEq(liqTotal, 120e18);
         assertEq(liqInPeriod, 10e18);
@@ -154,7 +154,7 @@ contract CircuitBreakerUserOpsTest is Test {
         vm.warp(1 hours);
         vm.prank(alice);
         deFi.withdrawal(address(token), 60e18);
-        assertEq(circuitBreaker.isRateLimitBreeched(address(token)), false);
+        assertEq(circuitBreaker.isRateLimitTriggered(address(token)), false);
         (, , int256 liqTotal, int256 liqInPeriod, , ) = circuitBreaker.tokenLimiters(
             address(token)
         );
@@ -166,7 +166,7 @@ contract CircuitBreakerUserOpsTest is Test {
         vm.warp(10 hours);
         vm.prank(alice);
         deFi.deposit(address(token), 10e18);
-        assertEq(circuitBreaker.isRateLimitBreeched(address(token)), false);
+        assertEq(circuitBreaker.isRateLimitTriggered(address(token)), false);
 
         uint256 tail;
         uint256 head;
@@ -194,7 +194,7 @@ contract CircuitBreakerUserOpsTest is Test {
         vm.warp(5 hours);
         vm.prank(alice);
         deFi.withdrawal(address(token), uint256(withdrawalAmount));
-        assertEq(circuitBreaker.isRateLimitBreeched(address(token)), true);
+        assertEq(circuitBreaker.isRateLimitTriggered(address(token)), true);
         (, , int256 liqTotal, int256 liqInPeriod, , ) = circuitBreaker.tokenLimiters(
             address(token)
         );
@@ -214,7 +214,7 @@ contract CircuitBreakerUserOpsTest is Test {
         vm.prank(alice);
         int256 secondAmount = 10_000e18;
         deFi.withdrawal(address(token), uint256(secondAmount));
-        assertEq(circuitBreaker.isRateLimitBreeched(address(token)), true);
+        assertEq(circuitBreaker.isRateLimitTriggered(address(token)), true);
         (, , liqTotal, liqInPeriod, , ) = circuitBreaker.tokenLimiters(address(token));
         assertEq(liqInPeriod, -withdrawalAmount - secondAmount);
         assertEq(liqTotal, 1_000_000e18);
@@ -252,7 +252,7 @@ contract CircuitBreakerUserOpsTest is Test {
         vm.warp(5 hours);
         vm.prank(alice);
         deFi.withdrawal(address(token), uint256(withdrawalAmount));
-        assertEq(circuitBreaker.isRateLimitBreeched(address(token)), true);
+        assertEq(circuitBreaker.isRateLimitTriggered(address(token)), true);
         assertEq(circuitBreaker.isRateLimited(), true);
 
         vm.warp(4 days);
@@ -334,7 +334,7 @@ contract CircuitBreakerUserOpsTest is Test {
         vm.warp(1 hours);
         vm.prank(alice);
         deFi.withdrawalNative(60e18);
-        assertEq(circuitBreaker.isRateLimitBreeched(NATIVE_ADDRESS_PROXY), false);
+        assertEq(circuitBreaker.isRateLimitTriggered(NATIVE_ADDRESS_PROXY), false);
         (, , int256 liqTotal, int256 liqInPeriod, , ) = circuitBreaker.tokenLimiters(
             NATIVE_ADDRESS_PROXY
         );
@@ -346,7 +346,7 @@ contract CircuitBreakerUserOpsTest is Test {
         vm.warp(10 hours);
         vm.prank(alice);
         deFi.depositNative{value: 10e18}();
-        assertEq(circuitBreaker.isRateLimitBreeched(NATIVE_ADDRESS_PROXY), false);
+        assertEq(circuitBreaker.isRateLimitTriggered(NATIVE_ADDRESS_PROXY), false);
 
         uint256 tail;
         uint256 head;

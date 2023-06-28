@@ -33,9 +33,9 @@ contract CircuitBreakerAdminOpsTest is Test {
 
         vm.prank(admin);
         // Protect USDC with 70% max drawdown per 4 hours
-        circuitBreaker.registerToken(address(token), 7000, 1000e18);
+        circuitBreaker.registerAsset(address(token), 7000, 1000e18);
         vm.prank(admin);
-        circuitBreaker.registerToken(NATIVE_ADDRESS_PROXY, 7000, 1000e18);
+        circuitBreaker.registerAsset(NATIVE_ADDRESS_PROXY, 7000, 1000e18);
         vm.warp(1 hours);
     }
 
@@ -45,39 +45,39 @@ contract CircuitBreakerAdminOpsTest is Test {
         assertEq(newCircuitBreaker.rateLimitCooldownPeriod(), 3 days);
     }
 
-    function test_registerToken_whenMinimumLiquidityThresholdIsInvalidShouldFail() public {
+    function test_registerAsset_whenMinimumLiquidityThresholdIsInvalidShouldFail() public {
         secondToken = new MockToken("DAI", "DAI");
         vm.prank(admin);
         vm.expectRevert(LimiterLib.InvalidMinimumLiquidityThreshold.selector);
-        circuitBreaker.registerToken(address(secondToken), 0, 1000e18);
+        circuitBreaker.registerAsset(address(secondToken), 0, 1000e18);
 
         vm.prank(admin);
         vm.expectRevert(LimiterLib.InvalidMinimumLiquidityThreshold.selector);
-        circuitBreaker.registerToken(address(secondToken), 10_001, 1000e18);
+        circuitBreaker.registerAsset(address(secondToken), 10_001, 1000e18);
 
         vm.prank(admin);
         vm.expectRevert(LimiterLib.InvalidMinimumLiquidityThreshold.selector);
-        circuitBreaker.updateTokenParams(address(secondToken), 0, 2000e18);
+        circuitBreaker.updateAssetParams(address(secondToken), 0, 2000e18);
 
         vm.prank(admin);
         vm.expectRevert(LimiterLib.InvalidMinimumLiquidityThreshold.selector);
-        circuitBreaker.updateTokenParams(address(secondToken), 10_001, 2000e18);
+        circuitBreaker.updateAssetParams(address(secondToken), 10_001, 2000e18);
     }
 
-    function test_registerToken_whenAlreadyRegisteredShouldFail() public {
+    function test_registerAsset_whenAlreadyRegisteredShouldFail() public {
         secondToken = new MockToken("DAI", "DAI");
         vm.prank(admin);
-        circuitBreaker.registerToken(address(secondToken), 7000, 1000e18);
+        circuitBreaker.registerAsset(address(secondToken), 7000, 1000e18);
         // Cannot register the same token twice
         vm.expectRevert(LimiterLib.LimiterAlreadyInitialized.selector);
         vm.prank(admin);
-        circuitBreaker.registerToken(address(secondToken), 7000, 1000e18);
+        circuitBreaker.registerAsset(address(secondToken), 7000, 1000e18);
     }
 
-    function test_registerToken_shouldBeSuccessful() public {
+    function test_registerAsset_shouldBeSuccessful() public {
         secondToken = new MockToken("DAI", "DAI");
         vm.prank(admin);
-        circuitBreaker.registerToken(address(secondToken), 7000, 1000e18);
+        circuitBreaker.registerAsset(address(secondToken), 7000, 1000e18);
         (uint256 minLiquidityThreshold, uint256 minAmount, , , , ) = circuitBreaker.tokenLimiters(
             address(secondToken)
         );
@@ -85,7 +85,7 @@ contract CircuitBreakerAdminOpsTest is Test {
         assertEq(minLiquidityThreshold, 7000);
 
         vm.prank(admin);
-        circuitBreaker.updateTokenParams(address(secondToken), 8000, 2000e18);
+        circuitBreaker.updateAssetParams(address(secondToken), 8000, 2000e18);
         (minLiquidityThreshold, minAmount, , , , ) = circuitBreaker.tokenLimiters(
             address(secondToken)
         );

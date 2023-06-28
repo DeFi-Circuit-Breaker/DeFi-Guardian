@@ -10,7 +10,7 @@ enum LimitStatus {
     Uninitialized,
     Inactive,
     Ok,
-    Breeched
+    Triggered
 }
 
 library LimiterLib {
@@ -123,7 +123,7 @@ library LimiterLib {
         // NOTE: uint256 to int256 conversion here is safe
         int256 minLiq = (currentLiq * int256(limiter.minLiqRetainedBps)) / int256(BPS_DENOMINATOR);
 
-        return futureLiq < minLiq ? LimitStatus.Breeched : LimitStatus.Ok;
+        return futureLiq < minLiq ? LimitStatus.Triggered : LimitStatus.Ok;
     }
 
     function initialized(Limiter storage limiter) internal view returns (bool) {

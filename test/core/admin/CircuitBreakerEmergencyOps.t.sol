@@ -42,15 +42,15 @@ contract CircuitBreakerEmergencyOpsTest is Test {
 
         vm.prank(admin);
         // Protect USDC with 70% max drawdown per 4 hours
-        circuitBreaker.registerToken(address(token), 7000, 1000e18);
+        circuitBreaker.registerAsset(address(token), 7000, 1000e18);
         vm.prank(admin);
-        circuitBreaker.registerToken(NATIVE_ADDRESS_PROXY, 7000, 1000e18);
+        circuitBreaker.registerAsset(NATIVE_ADDRESS_PROXY, 7000, 1000e18);
         vm.warp(1 hours);
     }
 
-    function test_markAsExploited_ifCallerIsNotAdminShouldFail() public {
+    function test_markAsNotOperational_ifCallerIsNotAdminShouldFail() public {
         vm.expectRevert(CircuitBreaker.NotAdmin.selector);
-        circuitBreaker.markAsExploited();
+        circuitBreaker.markAsNotOperational();
     }
 
     function test_migrateFundsAfterExploit_ifNotExploitedShouldFail() public {
@@ -64,7 +64,7 @@ contract CircuitBreakerEmergencyOpsTest is Test {
     function test_ifTokenNotRateLimitedShouldFail() public {
         secondToken = new MockToken("DAI", "DAI");
         vm.prank(admin);
-        circuitBreaker.registerToken(address(secondToken), 7000, 1000e18);
+        circuitBreaker.registerAsset(address(secondToken), 7000, 1000e18);
 
         token.mint(alice, 1_000_000e18);
 
@@ -79,7 +79,7 @@ contract CircuitBreakerEmergencyOpsTest is Test {
         vm.prank(alice);
         deFi.withdrawal(address(token), uint256(withdrawalAmount));
         assertEq(circuitBreaker.isRateLimited(), true);
-        assertEq(circuitBreaker.isRateLimitBreeched(address(secondToken)), false);
+        assertEq(circuitBreaker.isRateLimitTriggered(address(secondToken)), false);
     }
 
     function test_claimLockedFunds_ifRecipientHasNoLockedFundsShouldFail() public {
@@ -96,7 +96,7 @@ contract CircuitBreakerEmergencyOpsTest is Test {
         vm.prank(alice);
         deFi.withdrawal(address(token), uint256(withdrawalAmount));
         assertEq(circuitBreaker.isRateLimited(), true);
-        assertEq(circuitBreaker.isRateLimitBreeched(address(token)), true);
+        assertEq(circuitBreaker.isRateLimitTriggered(address(token)), true);
 
         vm.prank(admin);
         vm.expectRevert(CircuitBreaker.NoLockedFunds.selector);
@@ -129,7 +129,7 @@ contract CircuitBreakerEmergencyOpsTest is Test {
         deFi.withdrawal(address(token), uint256(withdrawalAmount));
 
         assertEq(circuitBreaker.isRateLimited(), true);
-        assertEq(circuitBreaker.isRateLimitBreeched(address(token)), true);
+        assertEq(circuitBreaker.isRateLimitTriggered(address(token)), true);
 
         vm.prank(bob);
         deFi.withdrawal(address(token), 1_000_000e18);
@@ -165,7 +165,7 @@ contract CircuitBreakerEmergencyOpsTest is Test {
 
         // Exploit
         vm.prank(admin);
-        circuitBreaker.markAsExploited();
+        circuitBreaker.markAsNotOperational();
 
         token.mint(alice, 1_000_000e18);
         vm.prank(alice);
