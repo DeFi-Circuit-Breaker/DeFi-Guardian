@@ -10,7 +10,7 @@ enum LimitStatus {
     Uninitialized,
     Inactive,
     Ok,
-    Breeched
+    Triggered
 }
 
 library LimiterLib {
@@ -18,11 +18,7 @@ library LimiterLib {
     error LimiterAlreadyInitialized();
     error LimiterNotInitialized();
 
-    function init(
-        Limiter storage limiter,
-        uint256 minLiqRetainedBps,
-        uint256 limitBeginThreshold
-    ) internal {
+    function init(Limiter storage limiter, uint256 minLiqRetainedBps, uint256 limitBeginThreshold) internal {
         if (minLiqRetainedBps == 0 || minLiqRetainedBps > BPS_DENOMINATOR) {
             revert InvalidMinimumLiquidityThreshold();
         }
@@ -31,11 +27,7 @@ library LimiterLib {
         limiter.limitBeginThreshold = limitBeginThreshold;
     }
 
-    function updateParams(
-        Limiter storage limiter,
-        uint256 minLiqRetainedBps,
-        uint256 limitBeginThreshold
-    ) internal {
+    function updateParams(Limiter storage limiter, uint256 minLiqRetainedBps, uint256 limitBeginThreshold) internal {
         if (minLiqRetainedBps == 0 || minLiqRetainedBps > BPS_DENOMINATOR) {
             revert InvalidMinimumLiquidityThreshold();
         }
@@ -44,12 +36,9 @@ library LimiterLib {
         limiter.limitBeginThreshold = limitBeginThreshold;
     }
 
-    function recordChange(
-        Limiter storage limiter,
-        int256 amount,
-        uint256 withdrawalPeriod,
-        uint256 tickLength
-    ) internal {
+    function recordChange(Limiter storage limiter, int256 amount, uint256 withdrawalPeriod, uint256 tickLength)
+        internal
+    {
         // If token does not have a rate limit, do nothing
         if (!initialized(limiter)) {
             return;
@@ -63,10 +52,7 @@ library LimiterLib {
             // if there is no head, set the head to the new inflow
             limiter.listHead = currentTickTimestamp;
             limiter.listTail = currentTickTimestamp;
-            limiter.listNodes[currentTickTimestamp] = LiqChangeNode({
-                amount: amount,
-                nextTimestamp: 0
-            });
+            limiter.listNodes[currentTickTimestamp] = LiqChangeNode({amount: amount, nextTimestamp: 0});
         } else {
             // if there is a head, check if the new inflow is within the period
             // if it is, add it to the head
@@ -83,10 +69,7 @@ library LimiterLib {
             } else {
                 // add to tail
                 limiter.listNodes[listTail].nextTimestamp = currentTickTimestamp;
-                limiter.listNodes[currentTickTimestamp] = LiqChangeNode({
-                    amount: amount,
-                    nextTimestamp: 0
-                });
+                limiter.listNodes[currentTickTimestamp] = LiqChangeNode({amount: amount, nextTimestamp: 0});
                 limiter.listTail = currentTickTimestamp;
             }
         }
@@ -101,11 +84,7 @@ library LimiterLib {
         int256 totalChange = 0;
         uint256 iter = 0;
 
-        while (
-            currentHead != 0 &&
-            block.timestamp - currentHead >= withdrawalPeriod &&
-            iter < totalIters
-        ) {
+        while (currentHead != 0 && block.timestamp - currentHead >= withdrawalPeriod && iter < totalIters) {
             LiqChangeNode storage node = limiter.listNodes[currentHead];
             totalChange += node.amount;
             uint256 nextTimestamp = node.nextTimestamp;
@@ -144,7 +123,7 @@ library LimiterLib {
         // NOTE: uint256 to int256 conversion here is safe
         int256 minLiq = (currentLiq * int256(limiter.minLiqRetainedBps)) / int256(BPS_DENOMINATOR);
 
-        return futureLiq < minLiq ? LimitStatus.Breeched : LimitStatus.Ok;
+        return futureLiq < minLiq ? LimitStatus.Triggered : LimitStatus.Ok;
     }
 
     function initialized(Limiter storage limiter) internal view returns (bool) {
