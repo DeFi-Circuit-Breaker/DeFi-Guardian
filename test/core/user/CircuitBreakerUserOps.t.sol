@@ -2,12 +2,12 @@
 pragma solidity 0.8.19;
 
 import {Test} from "forge-std/Test.sol";
-import {MockToken} from "../mocks/MockToken.sol";
-import {MockDeFiProtocol} from "../mocks/MockDeFiProtocol.sol";
+import {MockToken} from "../../mocks/MockToken.sol";
+import {MockDeFiProtocol} from "../../mocks/MockDeFiProtocol.sol";
 import {CircuitBreaker} from "src/core/CircuitBreaker.sol";
 import {LimiterLib} from "src/utils/LimiterLib.sol";
 
-contract CircuitBreakerTest is Test {
+contract CircuitBreakerUserOpsTest is Test {
     MockToken internal token;
     MockToken internal secondToken;
     MockToken internal unlimitedToken;
@@ -39,76 +39,7 @@ contract CircuitBreakerTest is Test {
         vm.warp(1 hours);
     }
 
-    function testInitialization() public {
-        CircuitBreaker newCircuitBreaker = new CircuitBreaker(admin, 3 days, 3 hours, 5 minutes);
-        assertEq(newCircuitBreaker.admin(), admin);
-        assertEq(newCircuitBreaker.rateLimitCooldownPeriod(), 3 days);
-    }
-
-    function testMint() public {
-        token.mint(alice, 2e18);
-        assertEq(token.totalSupply(), token.balanceOf(alice));
-    }
-
-    function testBurn() public {
-        token.mint(alice, 10e18);
-        assertEq(token.balanceOf(alice), 10e18);
-
-        token.burn(alice, 8e18);
-
-        assertEq(token.totalSupply(), 2e18);
-        assertEq(token.balanceOf(alice), 2e18);
-    }
-
-    function testRegisterTokenShouldBeSuccessful() public {
-        secondToken = new MockToken("DAI", "DAI");
-        vm.prank(admin);
-        circuitBreaker.registerToken(address(secondToken), 7000, 1000e18);
-        (uint256 minLiquidityThreshold, uint256 minAmount, , , , ) = circuitBreaker.tokenLimiters(
-            address(secondToken)
-        );
-        assertEq(minAmount, 1000e18);
-        assertEq(minLiquidityThreshold, 7000);
-
-        vm.prank(admin);
-        circuitBreaker.updateTokenParams(address(secondToken), 8000, 2000e18);
-        (minLiquidityThreshold, minAmount, , , , ) = circuitBreaker.tokenLimiters(
-            address(secondToken)
-        );
-        assertEq(minAmount, 2000e18);
-        assertEq(minLiquidityThreshold, 8000);
-    }
-
-    function testRegisterTokenWhenMinimumLiquidityThresholdIsInvalidShouldFail() public {
-        secondToken = new MockToken("DAI", "DAI");
-        vm.prank(admin);
-        vm.expectRevert(LimiterLib.InvalidMinimumLiquidityThreshold.selector);
-        circuitBreaker.registerToken(address(secondToken), 0, 1000e18);
-
-        vm.prank(admin);
-        vm.expectRevert(LimiterLib.InvalidMinimumLiquidityThreshold.selector);
-        circuitBreaker.registerToken(address(secondToken), 10_001, 1000e18);
-
-        vm.prank(admin);
-        vm.expectRevert(LimiterLib.InvalidMinimumLiquidityThreshold.selector);
-        circuitBreaker.updateTokenParams(address(secondToken), 0, 2000e18);
-
-        vm.prank(admin);
-        vm.expectRevert(LimiterLib.InvalidMinimumLiquidityThreshold.selector);
-        circuitBreaker.updateTokenParams(address(secondToken), 10_001, 2000e18);
-    }
-
-    function testRegisterTokenWhenAlreadyRegisteredShouldFail() public {
-        secondToken = new MockToken("DAI", "DAI");
-        vm.prank(admin);
-        circuitBreaker.registerToken(address(secondToken), 7000, 1000e18);
-        // Cannot register the same token twice
-        vm.expectRevert(LimiterLib.LimiterAlreadyInitialized.selector);
-        vm.prank(admin);
-        circuitBreaker.registerToken(address(secondToken), 7000, 1000e18);
-    }
-
-    function testDepositWithDrawNoLimitToken() public {
+    function test_deposit_withDrawNoLimitTokenShouldBeSuccessful() public {
         unlimitedToken = new MockToken("DAI", "DAI");
         unlimitedToken.mint(alice, 10000e18);
 
@@ -125,7 +56,7 @@ contract CircuitBreakerTest is Test {
         assertEq(circuitBreaker.isRateLimitBreeched(address(unlimitedToken)), false);
     }
 
-    function testDepositShouldBeSuccessful() public {
+    function test_deposit_shouldBeSuccessful() public {
         token.mint(alice, 10000e18);
 
         vm.prank(alice);
@@ -173,7 +104,7 @@ contract CircuitBreakerTest is Test {
         assertEq(tail % 5 minutes, 0);
     }
 
-    function testClearBacklogShouldBeSuccessful() public {
+    function test_clearBacklog_shouldBeSuccessful() public {
         token.mint(alice, 10000e18);
 
         vm.prank(alice);
@@ -211,7 +142,7 @@ contract CircuitBreakerTest is Test {
         assertEq(tail, 5 hours);
     }
 
-    function testWithdrawlsShouldBeSuccessful() public {
+    function test_withdrawl_shouldBeSuccessful() public {
         token.mint(alice, 10000e18);
 
         vm.prank(alice);
@@ -247,31 +178,7 @@ contract CircuitBreakerTest is Test {
         assertEq(tail, block.timestamp);
     }
 
-    function testAddProtectedContractsShouldBeSuccessful() public {
-        MockDeFiProtocol secondDeFi = new MockDeFiProtocol(address(circuitBreaker));
-
-        address[] memory addresses = new address[](1);
-        addresses[0] = address(secondDeFi);
-        vm.prank(admin);
-        circuitBreaker.addProtectedContracts(addresses);
-
-        assertEq(circuitBreaker.isProtectedContract(address(secondDeFi)), true);
-    }
-
-    function testRemoveProtectedContractsShouldBeSuccessful() public {
-        MockDeFiProtocol secondDeFi = new MockDeFiProtocol(address(circuitBreaker));
-
-        address[] memory addresses = new address[](1);
-        addresses[0] = address(secondDeFi);
-        vm.prank(admin);
-        circuitBreaker.addProtectedContracts(addresses);
-
-        vm.prank(admin);
-        circuitBreaker.removeProtectedContracts(addresses);
-        assertEq(circuitBreaker.isProtectedContract(address(secondDeFi)), false);
-    }
-
-    function testBreach() public {
+    function test_breach() public {
         // 1 Million USDC deposited
         token.mint(alice, 1_000_000e18);
 
@@ -329,7 +236,7 @@ contract CircuitBreakerTest is Test {
         assertEq(token.balanceOf(alice), uint256(withdrawalAmount + secondAmount));
     }
 
-    function testBreachAndLimitExpired() public {
+    function test_breachAndLimitExpired() public {
         // 1 Million USDC deposited
         token.mint(alice, 1_000_000e18);
 
@@ -354,23 +261,7 @@ contract CircuitBreakerTest is Test {
         assertEq(circuitBreaker.isRateLimited(), false);
     }
 
-    function testSetAdminShouldBeSuccessful() public {
-        assertEq(circuitBreaker.admin(), admin);
-        vm.prank(admin);
-        circuitBreaker.setAdmin(bob);
-        assertEq(circuitBreaker.admin(), bob);
-
-        vm.expectRevert();
-        vm.prank(admin);
-        circuitBreaker.setAdmin(alice);
-    }
-
-    function testSetAdminWhenCallerIsNotAdminShouldFail() public {
-        vm.expectRevert(CircuitBreaker.NotAdmin.selector);
-        circuitBreaker.setAdmin(alice);
-    }
-
-    function testDepositsAndWithdrawlsInSameTickLength() public {
+    function test_depositsAndWithdrawlsInSameTickLength() public {
         vm.warp(1 days);
         token.mint(alice, 10000e18);
 
@@ -427,14 +318,14 @@ contract CircuitBreakerTest is Test {
         deFi.depositNoCircuitBreaker(address(token), amount);
     }
 
-    function testNativeDepositsFuzzed(uint256 amount) public {
+    function test_nativeDepositsFuzzed(uint256 amount) public {
         // used to test compare gas costs of deposits
         vm.deal(alice, amount);
         vm.prank(alice);
         deFi.depositNative{value: amount}();
     }
 
-    function testNativeWithdrawlsShouldBeSuccessful() public {
+    function test_nativeWithdrawlsShouldBeSuccessful() public {
         vm.deal(alice, 10000e18);
 
         vm.prank(alice);
