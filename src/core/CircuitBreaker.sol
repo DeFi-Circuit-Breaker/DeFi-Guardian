@@ -46,15 +46,10 @@ contract CircuitBreaker is ICircuitBreaker {
     ////////////////////////////////////////////////////////////////
 
     /**
-     * @notice Emitted when a token is registered
+     * @notice Non-EIP standard events
      */
-    event TokenRegistered(address indexed token, uint256 metricThreshold, uint256 limitBeginThreshold);
-    event TokenInflow(address indexed token, uint256 indexed amount);
-    event TokenRateLimitBreached(address indexed token, uint256 timestamp);
-    event TokenWithdraw(address indexed token, address indexed recipient, uint256 amount);
-    event LockedFundsClaimed(address indexed token, address indexed recipient);
+
     event TokenBacklogCleaned(address indexed token, uint256 timestamp);
-    event AdminSet(address indexed newAdmin);
 
     ////////////////////////////////////////////////////////////////
     //                           ERRORS                           //
