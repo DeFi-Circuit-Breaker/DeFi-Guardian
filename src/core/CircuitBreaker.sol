@@ -41,7 +41,7 @@ contract CircuitBreaker is ICircuitBreaker {
 
     uint256 public immutable TICK_LENGTH;
 
-    bool public operational = true;
+    bool public isOperational = true;
 
     ////////////////////////////////////////////////////////////////
     //                           EVENTS                           //
@@ -92,8 +92,8 @@ contract CircuitBreaker is ICircuitBreaker {
      * in the CircuitBreaker contract to a multisig. This multisig should then be used to refund users pro-rata.
      * (Social Consensus)
      */
-    modifier isOperational() {
-        if (!operational) revert ProtocolWasExploited();
+    modifier onlyOperational() {
+        if (!isOperational) revert ProtocolWasExploited();
         _;
     }
 
@@ -124,7 +124,7 @@ contract CircuitBreaker is ICircuitBreaker {
     /**
      * @dev Give protected contracts one function to call for convenience
      */
-    function onTokenInflow(address _token, uint256 _amount) external onlyProtected isOperational {
+    function onTokenInflow(address _token, uint256 _amount) external onlyProtected onlyOperational {
         _onTokenInflow(_token, _amount);
     }
 
@@ -133,18 +133,18 @@ contract CircuitBreaker is ICircuitBreaker {
         uint256 _amount,
         address _recipient,
         bool _revertOnRateLimit
-    ) external onlyProtected isOperational {
+    ) external onlyProtected onlyOperational {
         _onTokenOutflow(_token, _amount, _recipient, _revertOnRateLimit);
     }
 
-    function onNativeAssetInflow(uint256 _amount) external onlyProtected isOperational {
+    function onNativeAssetInflow(uint256 _amount) external onlyProtected onlyOperational {
         _onTokenInflow(NATIVE_ADDRESS_PROXY, _amount);
     }
 
     function onNativeAssetOutflow(
         address _recipient,
         bool _revertOnRateLimit
-    ) external payable onlyProtected isOperational {
+    ) external payable onlyProtected onlyOperational {
         _onTokenOutflow(NATIVE_ADDRESS_PROXY, msg.value, _recipient, _revertOnRateLimit);
     }
 
@@ -153,7 +153,7 @@ contract CircuitBreaker is ICircuitBreaker {
      * use address(1) for native token claims
      */
 
-    function claimLockedFunds(address _asset, address _recipient) external isOperational {
+    function claimLockedFunds(address _asset, address _recipient) external onlyOperational {
         if (lockedFunds[_recipient][_asset] == 0) revert NoLockedFunds();
         if (isRateLimited) revert RateLimited();
 
@@ -253,14 +253,14 @@ contract CircuitBreaker is ICircuitBreaker {
     }
 
     function markAsNotOperational() external onlyAdmin {
-        operational = false;
+        isOperational = false;
     }
 
     function migrateFundsAfterExploit(
         address[] calldata _assets,
         address _recoveryRecipient
     ) external onlyAdmin {
-        if (operational) revert NotExploited();
+        if (isOperational) revert NotExploited();
         for (uint256 i = 0; i < _assets.length; i++) {
             if (_assets[i] == NATIVE_ADDRESS_PROXY) {
                 uint256 amount = address(this).balance;
