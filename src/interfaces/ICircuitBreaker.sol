@@ -281,4 +281,8 @@ interface ICircuitBreaker {
     /// @notice Check if the circuit breaker is currently in grace period
     /// @return isInGracePeriod MUST return TRUE if the circuit breaker is currently in grace period, FALSE otherwise
     function isInGracePeriod() external view returns (bool);
+
+    /// @notice Check if the circuit breaker is operational
+    /// @return isOperational MUST return TRUE if the circuit breaker is operational (not exploited), FALSE otherwise
+    function isOperational() external view returns (bool);
 }
