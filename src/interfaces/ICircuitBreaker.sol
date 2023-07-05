@@ -4,7 +4,6 @@ pragma solidity 0.8.19;
 /// @title Circuit Breaker
 /// @dev See https://eips.ethereum.org/EIPS/eip-[EIP NUMBER]
 interface ICircuitBreaker {
-
     /**
      *
      * @custom:section Events
@@ -12,7 +11,7 @@ interface ICircuitBreaker {
      */
 
     /// @dev MUST be emitted in `registerAsset` when an asset is registered
-    /// @param asset MUST be the address of the asset for which to set rate limit parameters. 
+    /// @param asset MUST be the address of the asset for which to set rate limit parameters.
     /// For any EIP-20 token, MUST be an EIP-20 token contract.
     /// For the native asset (ETH on mainnet), MUST be address 0x0000000000000000000000000000000000000001 equivalent to address(1).
     /// @param metricThreshold The threshold metric which defines when a rate limit is triggered
@@ -20,21 +19,21 @@ interface ICircuitBreaker {
     event AssetRegistered(address indexed asset, uint256 metricThreshold, uint256 minAmountToLimit);
 
     /// @dev MUST be emitted in `onTokenInflow` and `onNativeAssetInflow` during asset inflow into a protected contract
-    /// @param token MUST be the address of the asset flowing in. 
+    /// @param token MUST be the address of the asset flowing in.
     /// For any EIP-20 token, MUST be an EIP-20 token contract.
     /// For the native asset (ETH on mainnet), MUST be address 0x0000000000000000000000000000000000000001 equivalent to address(1).
     /// @param amount MUST equal the amount of asset transferred into the protected contract
     event AssetInflow(address indexed token, uint256 indexed amount);
 
     /// @dev MUST be emitted in `onTokenOutflow` and `onNativeAssetOutflow` when a rate limit is triggered
-    /// @param asset MUST be the address of the asset triggering the rate limit. 
+    /// @param asset MUST be the address of the asset triggering the rate limit.
     /// For any EIP-20 token, MUST be an EIP-20 token contract.
     /// For the native asset (ETH on mainnet), MUST be address 0x0000000000000000000000000000000000000001 equivalent to address(1).
     /// @param timestamp MUST equal the block.timestamp at the time of rate limit breach
     event AssetRateLimitBreached(address indexed asset, uint256 timestamp);
 
     /// @dev MUST be emitted in `onTokenOutflow` and `onNativeAssetOutflow` when an asset is successfully withdrawn
-    /// @param asset MUST be the address of the asset withdrawn. 
+    /// @param asset MUST be the address of the asset withdrawn.
     /// For any EIP-20 token, MUST be an EIP-20 token contract.
     /// For the native asset (ETH on mainnet), MUST be address 0x0000000000000000000000000000000000000001 equivalent to address(1).
     /// @param recipient MUST be the address of the recipient withdrawing the assets
@@ -42,7 +41,7 @@ interface ICircuitBreaker {
     event AssetWithdraw(address indexed asset, address indexed recipient, uint256 amount);
 
     /// @dev MUST be emitted in `claimLockedFunds` when a recipient claims locked funds
-    /// @param asset MUST be the address of the asset claimed. 
+    /// @param asset MUST be the address of the asset claimed.
     /// For any EIP-20 token, MUST be an EIP-20 token contract.
     /// For the native asset (ETH on mainnet), MUST be address 0x0000000000000000000000000000000000000001 equivalent to address(1).
     /// @param recipient MUST be the address of the recipient claiming the assets
@@ -63,45 +62,37 @@ interface ICircuitBreaker {
      */
 
     /// @notice Register rate limit parameters for a given asset
-    /// @dev Each asset that will be rate limited MUST be registered using this function, including the native asset (ETH on mainnet). 
+    /// @dev Each asset that will be rate limited MUST be registered using this function, including the native asset (ETH on mainnet).
     /// If an asset is not registered, it will not be subject to rate limiting or circuit breaking and unlimited immediate withdrawals MUST be allowed.
     /// MUST revert if the caller is not the current admin.
     /// MUST revert if the asset has already been registered.
-    /// @param _asset The address of the asset for which to set rate limit parameters. 
+    /// @param _asset The address of the asset for which to set rate limit parameters.
     /// To set the rate limit parameters for any EIP-20 token, MUST be an EIP-20 token contract.
     /// To set rate limit parameters For the native asset, MUST be address 0x0000000000000000000000000000000000000001 equivalent to address(1).
-    /// @param _metricThreshold The threshold metric which defines when a rate limit is triggered. 
+    /// @param _metricThreshold The threshold metric which defines when a rate limit is triggered.
     /// This is intentionally left open to allow for various implementations, including percentage-based (see reference implementation), nominal, and more.
     /// MUST be greater than 0.
-    /// @param _minAmountToLimit The minimum amount of nominal asset liquidity at which point rate limits can be triggered. 
+    /// @param _minAmountToLimit The minimum amount of nominal asset liquidity at which point rate limits can be triggered.
     /// This limits potential false positives triggered either by minor assets with low liquidity or by low liquidity during early stages of protocol launch.
     /// Below this amount, withdrawals of this asset MUST NOT trigger a rate limit.
     /// However, if a rate limit is triggered, assets below the minimum trigger amount to limit MUST still be locked.
-    function registerAsset(
-        address _asset,
-        uint256 _metricThreshold,
-        uint256 _minAmountToLimit
-    ) external;
+    function registerAsset(address _asset, uint256 _metricThreshold, uint256 _minAmountToLimit) external;
 
-    /// @notice Modify rate limit parameters for a given asset 
+    /// @notice Modify rate limit parameters for a given asset
     /// @dev MAY be used only after registering an asset.
     /// MUST revert if asset is not previously registered with the `registerAsset` method.
     /// MUST revert if the caller is not the current admin.
-    /// @param _asset The address of the asset contract for which to set rate limit parameters. 
+    /// @param _asset The address of the asset contract for which to set rate limit parameters.
     /// To update the rate limit parameters for any EIP-20 token, MUST be an EIP-20 token contract.
     /// To update the rate limit parameters For the native asset (ETH on mainnet), MUST be address 0x0000000000000000000000000000000000000001 equivalent to address(1).
-    /// @param _metricThreshold The threshold metric which defines when a rate limit is triggered. 
+    /// @param _metricThreshold The threshold metric which defines when a rate limit is triggered.
     /// This is left open to allow for various implementations, including percentage-based (see reference implementation), nominal, and more.
     /// MUST be greater than 0.
-    /// @param _minAmountToLimit The minimum amount of nominal asset liquidity at which point rate limits can be triggered. 
+    /// @param _minAmountToLimit The minimum amount of nominal asset liquidity at which point rate limits can be triggered.
     /// This limits potential false positives caused both by minor assets with low liquidity and by low liquidity during early stages of protocol launch.
     /// Below this amount, withdrawals of this asset MUST NOT trigger a rate limit.
     /// However, if a rate limit is triggered, assets below the minimum amount to limit MUST still be locked.
-    function updateAssetParams(
-        address _asset,
-        uint256 _metricThreshold,
-        uint256 _minAmountToLimit
-    ) external;
+    function updateAssetParams(address _asset, uint256 _metricThreshold, uint256 _minAmountToLimit) external;
 
     /// @notice Record EIP-20 token inflow into a protected contract
     /// @dev This method MUST be called from all protected contract methods where an EIP-20 token is transferred in from a user.
@@ -126,12 +117,7 @@ interface ICircuitBreaker {
     /// @param _amount MUST equal the amount of tokens transferred out of the protected contract
     /// @param _recipient MUST be the address of the recipient of the transferred tokens from the protected contract
     /// @param _revertOnRateLimit MUST be TRUE to revert if a rate limit is triggered or FALSE to return without reverting if a rate limit is triggered (delayed settlement)
-    function onTokenOutflow(
-        address _token,
-        uint256 _amount,
-        address _recipient,
-        bool _revertOnRateLimit
-    ) external;
+    function onTokenOutflow(address _token, uint256 _amount, address _recipient, bool _revertOnRateLimit) external;
 
     /// @notice Record native asset (ETH on mainnet) inflow into a protected contract
     /// @dev This method MUST be called from all protected contract methods where native asset is transferred in from a user.
@@ -169,7 +155,7 @@ interface ICircuitBreaker {
 
     /// @notice Set the admin of the contract to govern the circuit breaker
     /// @dev The admin SHOULD represent the governance contract of the protected protocol.
-    /// The admin has authority to: withdraw locked funds, set grace periods, register asset parameters, update asset parameters, 
+    /// The admin has authority to: withdraw locked funds, set grace periods, register asset parameters, update asset parameters,
     /// set new admin, override rate limit, add protected contracts, remove protected contracts.
     /// MUST revert if the caller is not the current admin.
     /// MUST revert if `_newAdmin` is address(0).
@@ -185,22 +171,22 @@ interface ICircuitBreaker {
     function overrideRateLimit() external;
 
     /// @notice Override an expired rate limit
-    /// @dev This method MAY be called by anyone once the cooldown period is complete. 
+    /// @dev This method MAY be called by anyone once the cooldown period is complete.
     /// MUST revert if the cooldown period is not complete.
     /// MUST revert if the circuit breaker is not currently rate limited.
     function overrideExpiredRateLimit() external;
 
     /// @notice Add new protected contracts
-    /// @dev MUST be used to add protected contracts. Protected contracts MUST be part of your protocol. 
-    /// Protected contracts have the authority to trigger rate limits and withdraw assets. 
+    /// @dev MUST be used to add protected contracts. Protected contracts MUST be part of your protocol.
+    /// Protected contracts have the authority to trigger rate limits and withdraw assets.
     /// MUST revert if caller is not the current admin.
     /// MUST store protected contracts in the stored state of the circuit breaker implementation.
     /// @param _ProtectedContracts an array of addresses of protected contracts to add
     function addProtectedContracts(address[] calldata _ProtectedContracts) external;
 
     /// @notice Remove protected contracts
-    /// @dev MAY be used to remove protected contracts. Protected contracts MUST be part of your protocol. 
-    /// Protected contracts have the authority to trigger rate limits and withdraw assets. 
+    /// @dev MAY be used to remove protected contracts. Protected contracts MUST be part of your protocol.
+    /// Protected contracts have the authority to trigger rate limits and withdraw assets.
     /// MUST revert if caller is not the current admin.
     /// MUST remove protected contracts from stored state in the circuit breaker implementation.
     /// @param _ProtectedContracts an array of addresses of protected contracts to remove
@@ -226,11 +212,8 @@ interface ICircuitBreaker {
     /// @param _assets Array of assets to recover.
     /// For any EIP-20 token, MUST be an EIP-20 token contract.
     /// For the native asset (ETH on mainnet), MUST be address 0x0000000000000000000000000000000000000001 equivalent to address(1).
-    /// @param _recoveryRecipient The address of the recipient to receive recovered funds. Often this will be a multisig wallet. 
-    function migrateFundsAfterExploit(
-        address[] calldata _assets,
-        address _recoveryRecipient
-    ) external;
+    /// @param _recoveryRecipient The address of the recipient to receive recovered funds. Often this will be a multisig wallet.
+    function migrateFundsAfterExploit(address[] calldata _assets, address _recoveryRecipient) external;
 
     /**
      *

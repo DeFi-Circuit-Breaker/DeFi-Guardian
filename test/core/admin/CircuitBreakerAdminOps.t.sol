@@ -78,17 +78,13 @@ contract CircuitBreakerAdminOpsTest is Test {
         secondToken = new MockToken("DAI", "DAI");
         vm.prank(admin);
         circuitBreaker.registerAsset(address(secondToken), 7000, 1000e18);
-        (uint256 minLiquidityThreshold, uint256 minAmount, , , , ) = circuitBreaker.tokenLimiters(
-            address(secondToken)
-        );
+        (uint256 minLiquidityThreshold, uint256 minAmount,,,,) = circuitBreaker.tokenLimiters(address(secondToken));
         assertEq(minAmount, 1000e18);
         assertEq(minLiquidityThreshold, 7000);
 
         vm.prank(admin);
         circuitBreaker.updateAssetParams(address(secondToken), 8000, 2000e18);
-        (minLiquidityThreshold, minAmount, , , , ) = circuitBreaker.tokenLimiters(
-            address(secondToken)
-        );
+        (minLiquidityThreshold, minAmount,,,,) = circuitBreaker.tokenLimiters(address(secondToken));
         assertEq(minAmount, 2000e18);
         assertEq(minLiquidityThreshold, 8000);
     }

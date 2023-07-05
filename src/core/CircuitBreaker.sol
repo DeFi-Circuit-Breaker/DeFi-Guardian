@@ -128,12 +128,11 @@ contract CircuitBreaker is ICircuitBreaker {
         _onTokenInflow(_token, _amount);
     }
 
-    function onTokenOutflow(
-        address _token,
-        uint256 _amount,
-        address _recipient,
-        bool _revertOnRateLimit
-    ) external onlyProtected onlyOperational {
+    function onTokenOutflow(address _token, uint256 _amount, address _recipient, bool _revertOnRateLimit)
+        external
+        onlyProtected
+        onlyOperational
+    {
         _onTokenOutflow(_token, _amount, _recipient, _revertOnRateLimit);
     }
 
@@ -141,10 +140,12 @@ contract CircuitBreaker is ICircuitBreaker {
         _onTokenInflow(NATIVE_ADDRESS_PROXY, _amount);
     }
 
-    function onNativeAssetOutflow(
-        address _recipient,
-        bool _revertOnRateLimit
-    ) external payable onlyProtected onlyOperational {
+    function onNativeAssetOutflow(address _recipient, bool _revertOnRateLimit)
+        external
+        payable
+        onlyProtected
+        onlyOperational
+    {
         _onTokenOutflow(NATIVE_ADDRESS_PROXY, msg.value, _recipient, _revertOnRateLimit);
     }
 
@@ -184,20 +185,18 @@ contract CircuitBreaker is ICircuitBreaker {
         isRateLimited = false;
     }
 
-    function registerAsset(
-        address _asset,
-        uint256 _minLiqRetainedBps,
-        uint256 _limitBeginThreshold
-    ) external onlyAdmin {
+    function registerAsset(address _asset, uint256 _minLiqRetainedBps, uint256 _limitBeginThreshold)
+        external
+        onlyAdmin
+    {
         tokenLimiters[_asset].init(_minLiqRetainedBps, _limitBeginThreshold);
         emit AssetRegistered(_asset, _minLiqRetainedBps, _limitBeginThreshold);
     }
 
-    function updateAssetParams(
-        address _asset,
-        uint256 _minLiqRetainedBps,
-        uint256 _limitBeginThreshold
-    ) external onlyAdmin {
+    function updateAssetParams(address _asset, uint256 _minLiqRetainedBps, uint256 _limitBeginThreshold)
+        external
+        onlyAdmin
+    {
         Limiter storage limiter = tokenLimiters[_asset];
         limiter.updateParams(_minLiqRetainedBps, _limitBeginThreshold);
         limiter.sync(WITHDRAWAL_PERIOD);
@@ -235,10 +234,11 @@ contract CircuitBreaker is ICircuitBreaker {
         emit AdminSet(_newAdmin);
     }
 
-    function tokenLiquidityChanges(
-        address _token,
-        uint256 _tickTimestamp
-    ) external view returns (uint256 nextTimestamp, int256 amount) {
+    function tokenLiquidityChanges(address _token, uint256 _tickTimestamp)
+        external
+        view
+        returns (uint256 nextTimestamp, int256 amount)
+    {
         LiqChangeNode storage node = tokenLimiters[_token].listNodes[_tickTimestamp];
         nextTimestamp = node.nextTimestamp;
         amount = node.amount;
@@ -256,10 +256,7 @@ contract CircuitBreaker is ICircuitBreaker {
         isOperational = false;
     }
 
-    function migrateFundsAfterExploit(
-        address[] calldata _assets,
-        address _recoveryRecipient
-    ) external onlyAdmin {
+    function migrateFundsAfterExploit(address[] calldata _assets, address _recoveryRecipient) external onlyAdmin {
         if (isOperational) revert NotExploited();
         for (uint256 i = 0; i < _assets.length; i++) {
             if (_assets[i] == NATIVE_ADDRESS_PROXY) {
@@ -288,12 +285,7 @@ contract CircuitBreaker is ICircuitBreaker {
         emit AssetInflow(_token, _amount);
     }
 
-    function _onTokenOutflow(
-        address _token,
-        uint256 _amount,
-        address _recipient,
-        bool _revertOnRateLimit
-    ) internal {
+    function _onTokenOutflow(address _token, uint256 _amount, address _recipient, bool _revertOnRateLimit) internal {
         Limiter storage limiter = tokenLimiters[_token];
         // Check if the token has enforced rate limited
         if (!limiter.initialized()) {
@@ -334,13 +326,9 @@ contract CircuitBreaker is ICircuitBreaker {
         emit AssetWithdraw(_token, _recipient, _amount);
     }
 
-    function _safeTransferIncludingNative(
-        address _token,
-        address _recipient,
-        uint256 _amount
-    ) internal {
+    function _safeTransferIncludingNative(address _token, address _recipient, uint256 _amount) internal {
         if (_token == NATIVE_ADDRESS_PROXY) {
-            (bool success, ) = _recipient.call{value: _amount}("");
+            (bool success,) = _recipient.call{value: _amount}("");
             if (!success) revert NativeTransferFailed();
         } else {
             IERC20(_token).safeTransfer(_recipient, _amount);

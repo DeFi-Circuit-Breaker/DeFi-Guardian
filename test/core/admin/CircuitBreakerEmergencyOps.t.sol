@@ -10,12 +10,7 @@ import {LimiterLib} from "src/utils/LimiterLib.sol";
 
 contract CircuitBreakerEmergencyOpsTest is Test {
     event FundsReleased(address indexed token);
-    event HackerFundsWithdrawn(
-        address indexed hacker,
-        address indexed token,
-        address indexed receiver,
-        uint256 amount
-    );
+    event HackerFundsWithdrawn(address indexed hacker, address indexed token, address indexed receiver, uint256 amount);
 
     MockToken internal token;
     MockToken internal secondToken;
