@@ -264,14 +264,10 @@ contract CircuitBreaker is ICircuitBreaker {
         for (uint256 i = 0; i < _assets.length; i++) {
             if (_assets[i] == NATIVE_ADDRESS_PROXY) {
                 uint256 amount = address(this).balance;
-                if (amount > 0) {
-                    _safeTransferIncludingNative(_assets[i], _recoveryRecipient, amount);
-                }
+                _safeTransferIncludingNative(_assets[i], _recoveryRecipient, amount);
             } else {
                 uint256 amount = IERC20(_assets[i]).balanceOf(address(this));
-                if (amount > 0) {
-                    _safeTransferIncludingNative(_assets[i], _recoveryRecipient, amount);
-                }
+                _safeTransferIncludingNative(_assets[i], _recoveryRecipient, amount);
             }
         }
     }
@@ -339,6 +335,8 @@ contract CircuitBreaker is ICircuitBreaker {
         address _recipient,
         uint256 _amount
     ) internal {
+        if(_amount == 0) return;
+
         if (_token == NATIVE_ADDRESS_PROXY) {
             (bool success, ) = _recipient.call{value: _amount}("");
             if (!success) revert NativeTransferFailed();
